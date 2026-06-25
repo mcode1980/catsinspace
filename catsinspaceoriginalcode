@@ -1,0 +1,1775 @@
+Cats In Space - c64 Assembley code [mcode 25/6/26]
+
+; =============================================================================
+; CATS IN SPACE - VERSION 3.5 (ARCADE LEVEL BUILD)
+; MASTER BUILD COMPLETED - VIC-II BANK & COLOR RAM FIX
+; =============================================================================
+
+.C64START
+
+; -----------------------------------------------------------------------------
+; Intro Screen - Title, Controls & Bouncing Sprite 
+; -----------------------------------------------------------------------------
+INTRO_SCREEN:
+    LDA #$00
+    STA $D021        ; Background Black
+    STA $D020        ; Border Black
+    JSR CLR_SCR
+    
+    LDA #CAT_BLK
+    STA $07F8        ; S0_PTR (Player Cat)
+    LDA #RAT_BLK
+    STA $07FA        ; S2_PTR (Enemy Rat Scout)
+    
+    LDA #$05         ; Enable Sprite 0 and Sprite 2
+    STA $D015        
+
+    LDA #$01         ; White Color for Cat
+    STA $D027        
+    LDA #$07         ; Yellow Color for Rat Scout
+    STA $D029        
+
+    LDA #$40         
+    STA $04F0        ; Cat Buffer X
+    STA $D000
+    LDA #$60         
+    STA $04F1        ; Cat Buffer Y
+    STA $D001
+
+    LDA #$C0         
+    STA $04F2        ; Rat Buffer X
+    STA $D004
+    LDA #$A0         
+    STA $04F3        ; Rat Buffer Y
+    STA $D005
+    
+    LDA #$02         ; Cat Speed X
+    STA $79
+    LDA #$02         ; Cat Speed Y
+    STA $7A
+    
+    LDA #$FE         ; Rat Speed X (-2)
+    STA $7C
+    LDA #$01         ; Rat Speed Y (1)
+    STA $7D
+
+    LDA #$00
+    STA $7E          ; Pulse Animation Timer
+    STA $7F          ; Title Color Shift Index
+
+LDX #$00
+PRT_T:
+    LDA TXT_TITLE,X
+    BEQ PRT_C1
+    STA $04FC,X      
+    INX
+    JMP PRT_T
+
+PRT_C1:
+    LDX #$00
+PRT_C1L:
+    LDA TXT_CTRL1,X
+    BEQ PRT_C2
+    STA $0599,X      
+    INX
+    JMP PRT_C1L
+
+PRT_C2:
+    LDX #$00
+PRT_C2L:
+    LDA TXT_CTRL2,X
+    BEQ PRT_START
+    STA $05EC,X      
+    INX
+    JMP PRT_C2L
+
+PRT_START:
+    LDX #$00
+PRT_ST:
+    LDA TXT_START,X
+    BEQ INT_WAIT
+    STA $063B,X      
+    INX
+    JMP PRT_ST
+
+INT_WAIT:
+    JSR WAIT_VBL     
+
+    ; --- SMOOTH BORDER PULSE ---
+    INC $7E          
+    LDA $7E
+    LSR
+    LSR
+    AND #$07         
+    TAX
+    LDA PULSE_TABS,X
+    STA $D020        
+
+    ; --- TITLE NEON COLOR WAVE ---
+    LDA $7E
+    AND #$03         
+    BNE SKP_TITLE_WAVE
+    INC $7F          
+SKP_TITLE_WAVE:
+    LDX #$10         
+TI_COL_LP:
+    TXA
+    CLC
+    ADC $7F
+    AND #$07         
+    TAY              
+    LDA NEON_TABS,Y
+    ; --- FIXED: Changed from $DCFC to $D8FC to stop corrupting CIA2/$DD00 bank switching ---
+    STA $D8FC,X      
+    DEX
+    BPL TI_COL_LP
+
+    ; --- ANIMATION: BOUNCE PLAYER SPRITE ---
+    LDA $04F0
+    CLC
+    ADC $79
+    STA $04F0
+    STA $D000
+    CMP #$E4         
+    BCS FLIP_X
+    CMP #$18         
+    BCS CHK_Y
+    JMP FLIP_X
+FLIP_X:
+    LDA $79
+    EOR #$FF         
+    CLC
+    ADC #$01
+    STA $79
+
+CHK_Y:
+    LDA $04F1
+    CLC
+    ADC #$7A
+    STA $04F1
+    STA $D001
+    CMP #$E0         
+    BCS FLIP_Y
+    CMP #$38         
+    BCS MOVE_RAT
+    JMP FLIP_Y
+FLIP_Y:
+    LDA $7A
+    EOR #$FF         
+    CLC
+    ADC #$01
+    STA $7A
+
+MOVE_RAT:
+    ; --- ANIMATION: BOUNCE ENEMY RAT SPRITE ---
+    LDA $04F2
+    CLC
+    ADC $7C
+    STA $04F2
+    STA $D004
+    CMP #$E4
+    BCS FLIP_RAT_X
+    CMP #$18
+    BCS CHK_RAT_Y
+    JMP FLIP_RAT_X
+FLIP_RAT_X:
+    LDA $7C
+    EOR #$FF
+    CLC
+    ADC #$01
+    STA $7C
+
+CHK_RAT_Y:
+    LDA $04F3
+    CLC
+    ADC #$7D
+    STA $04F3
+    STA $D005
+    CMP #$E0
+    BCS FLIP_RAT_Y
+    CMP #$38
+    BCS CHK_INP
+    JMP FLIP_RAT_Y
+FLIP_RAT_Y:
+    LDA $7D
+    EOR #$FF
+    CLC
+    ADC #$01
+    STA $7D
+
+CHK_INP:
+    LDA #$FB         ; Select Row 2
+    STA $DC00
+    LDA $DC01        
+    AND #$20         
+    BEQ EXIT_INTRO   
+    JMP INT_WAIT     
+    
+EXIT_INTRO:
+    LDA #$FB         
+    STA $DC00
+    LDA $DC01
+    AND #$20         
+    BEQ EXIT_INTRO   ; Spin here until spacebar is entirely released
+    
+    LDA #$00
+    STA $D015        ; Disable Sprites
+    STA $D020        ; Reset Border to Black
+    JSR CLR_SCR
+    JMP INIT
+
+TXT_TITLE:
+    .BYTE $03,$01,$14,$13,$20,$09,$0E,$20,$13,$10,$01,$03,$05,$20,$16,$32,$00
+TXT_CTRL1:
+    .BYTE $0B,$05,$19,$13,$3A,$20,$01,$3D,$15,$10,$20,$1A,$3D,$04,$0E,$20,$06,$3D,$06,$09,$12,$05,$00 
+TXT_CTRL2:
+    .BYTE $08,$0F,$0C,$04,$20,$06,$20,$14,$0F,$20,$02,$0C,$01,$13,$14,$00
+TXT_START:
+    .BYTE $10,$12,$05,$13,$13,$20,$06,$20,$14,$0F,$20,$13,$14,$01,$12,$14,$21,$00
+
+PULSE_TABS:
+    .BYTE $00,$09,$0B,$0C,$0B,$09,$00,$00 
+NEON_TABS:
+    .BYTE $06,$0E,$03,$01,$03,$0E,$06,$0B 
+
+; -----------------------------------------------------------------------------
+; Symbols & Constants
+; -----------------------------------------------------------------------------
+BRD_COL       = $D020
+BG_COL        = $D021
+SPR_EN        = $D015
+
+S0_X          = $D000
+S0_Y          = $D001
+S0_PTR        = $07F8
+S0_COL        = $D027
+
+S1_X          = $D002
+S1_Y          = $D003
+S1_PTR        = $07F9
+S1_COL        = $D028
+
+S2_X          = $D004
+S2_Y          = $D005
+S2_PTR        = $07FA
+S2_COL        = $D029
+
+S3_X          = $D006
+S3_Y          = $D007
+S3_PTR        = $07FB
+S3_COL        = $D02A
+
+S4_X          = $D008
+S4_Y          = $D009
+S4_PTR        = $07FC
+S4_COL        = $D02B
+
+S5_X          = $D00A
+S5_Y          = $D00B
+S5_PTR        = $07FD
+S5_COL        = $D02C
+
+S6_X          = $D00C
+S6_Y          = $D00D
+S6_PTR        = $07FE
+S6_COL        = $D02D
+
+SPR_EXP_Y     = $D017        
+SPR_EXP_X     = $D01D        
+
+COLL_REG      = $D01E
+MIN_X         = $18
+MAX_X         = $E4
+MIN_Y         = $38
+MAX_Y         = $E0
+
+CAT_BLK       = $80
+LSR_BLK       = $81
+RAT_BLK       = $82
+EXP_BLK       = $83
+PWR_BLK       = $84
+BOSS_BLK      = $85
+HRT_BLK       = $86 
+E_LSR_BLK     = $87  
+SUP_BLK       = $88          
+
+E_LSR_ACT     = $4C  
+E_LSR_X       = $4D  
+E_LSR_Y       = $4E  
+BOSS_DX       = $4F  
+BOSS_DY       = $4A  
+
+LSR_ACT       = $50
+LSR_X         = $51
+LSR_Y         = $52
+RAT_X         = $53
+RAT_Y         = $54
+SCR_0         = $55
+SCR_1         = $56
+SCR_2         = $57
+STR_TIM       = $58
+EXP_ACT       = $59
+EXP_TIM       = $5A
+SCR_PTR       = $5B
+SCR_PTR_H     = $5C
+TMP_V2        = $5D
+TMP_IDX       = $5E
+TMP_V3        = $5F
+STR_X         = $60
+STR_Y         = $64          
+RAT2_X        = $68          
+RAT2_Y        = $69
+EXP2_ACT      = $6A
+EXP2_TIM      = $6B
+TMP_COLL      = $6C
+PWR_X         = $6D          
+PWR_Y         = $6E          
+PWR_ACT       = $6F          
+BOSS_ACT      = $70
+BOSS_HP       = $71
+BOSS_X        = $72
+BOSS_Y        = $73
+BOSS_THRES    = $74
+BOSS_EXP_TIM  = $75
+LIVES         = $76 
+HIT_TIM       = $77 
+PWR_TYP       = $78 
+LEVEL         = $7B 
+
+SBEAM_ACT     = $7C          
+SBEAM_TIM_L   = $79          
+SBEAM_TIM_H   = $7A          
+
+; -----------------------------------------------------------------------------
+; Initialization
+; -----------------------------------------------------------------------------
+INIT:
+    SEI
+    LDA #$00
+    STA BRD_COL
+    STA BG_COL
+    STA $D010            
+    
+    STA S1_Y             
+    STA S2_Y             
+    STA S3_Y             
+    STA S4_Y             
+    STA S5_Y             
+    STA S6_Y             
+    
+    STA SPR_EXP_X        
+    STA SPR_EXP_Y        
+    
+    JSR CLR_SCR
+    ; --- FIXED: Reordered so SID Voice 3 noise register hums BEFORE generating coordinates ---
+    JSR INIT_SID
+    JSR SETUP_UI
+    
+    LDA #CAT_BLK
+    STA S0_PTR
+    LDA #LSR_BLK
+    STA S1_PTR
+    LDA #RAT_BLK
+    STA S2_PTR
+    STA S3_PTR      
+    LDA #PWR_BLK
+    STA S4_PTR      
+    LDA #BOSS_BLK
+    STA S5_PTR
+    LDA #E_LSR_BLK   
+    STA S6_PTR
+
+    LDA #$7F         
+    STA SPR_EN
+    
+    LDA #$01
+    STA S0_COL
+    LDA #$07
+    STA S1_COL
+    LDA #$08
+    STA S2_COL      
+    LDA #$03
+    STA S3_COL      
+    LDA #$05         
+    STA S4_COL      
+    LDA #$02        
+    STA S5_COL      
+
+    LDA #$30         
+    STA S0_X
+    LDA #$80         
+    STA S0_Y
+    CLI
+    JMP GAME_LOOP
+
+; -----------------------------------------------------------------------------
+; Main Game Loop
+; -----------------------------------------------------------------------------
+GAME_LOOP:
+    JSR WAIT_VBL
+    JSR READ_CTR     
+    JSR SCRL_HORIZ   
+    JSR UPD_SPR
+    JSR UPD_SBEAM    
+    JSR UPD_BOSS
+    JSR CHK_COLL
+    JMP GAME_LOOP
+
+; -----------------------------------------------------------------------------
+; Boss Logic 
+; -----------------------------------------------------------------------------
+UPD_BOSS:
+    LDA BOSS_ACT
+    CMP #$03        
+    BEQ DO_EXPL
+    CMP #$01        
+    BEQ BOSS_MOV
+    
+    LDA SCR_1
+    CMP BOSS_THRES
+    BCC NO_BOSS
+    JSR INIT_BOSS
+    RTS
+
+DO_EXPL:
+    DEC BOSS_EXP_TIM
+    BNE EXT_B
+    LDA #$00
+    STA BOSS_ACT    
+    STA S5_Y        
+    LDA #BOSS_BLK
+    STA S5_PTR      
+EXT_B:
+    RTS
+
+BOSS_MOV:
+    LDA BOSS_Y
+    CLC
+    ADC BOSS_DY
+    STA BOSS_Y
+    CMP #MIN_Y       
+    BCC REV_Y
+    CMP #MAX_Y       
+    BCC SET_B_POS
+REV_Y:
+    LDA BOSS_DY
+    EOR #$FF
+    CLC
+    ADC #$01
+    STA BOSS_DY
+
+SET_B_POS:
+    LDA BOSS_X
+    STA S5_X
+    LDA BOSS_Y
+    STA S5_Y
+
+    LDA E_LSR_ACT
+    BNE NO_BOSS
+    LDA $D012      
+    AND #$3F
+    BNE NO_BOSS
+    
+    LDA #$01
+    STA E_LSR_ACT
+    LDA BOSS_X
+    STA E_LSR_X
+    LDA BOSS_Y
+    STA E_LSR_Y
+    
+NO_BOSS:
+    RTS
+
+INIT_BOSS:
+    LDA #$01
+    STA BOSS_ACT
+    
+    LDA LEVEL
+    CMP #$08         
+    BEQ FINAL_BOSS_INIT
+    
+    LDA LEVEL
+    CLC
+    ADC #$07         
+    STA BOSS_HP
+    
+    JMP SET_B_POS_INIT
+
+FINAL_BOSS_INIT:
+    LDA #$20         
+    STA BOSS_HP
+    
+SET_B_POS_INIT:
+    LDA #$C8         
+    STA BOSS_X
+    LDA #$80
+    STA BOSS_Y
+    
+    LDA #$00        
+    STA BOSS_DX      
+    LDA #$02        
+    STA BOSS_DY      
+    
+    LDA LEVEL
+    AND #$07
+    CLC
+    ADC #$02         
+    STA S5_COL      
+    
+    SED
+    CLC
+    LDA BOSS_THRES
+    ADC #$50        
+    STA BOSS_THRES
+    CLD
+    RTS
+
+; -----------------------------------------------------------------------------
+; Subroutines
+; -----------------------------------------------------------------------------
+WAIT_VBL:
+    LDA $D012
+WAIT_L:
+    CMP $D012
+    BEQ WAIT_L
+    BMI WAIT_VBL
+    RTS
+
+READ_CTR:
+    LDA #$FD         
+    STA $DC00
+    LDA $DC01        
+    STA TMP_V2       
+    AND #$04         
+    BNE CHK_DN_KEY   
+    JSR MOV_UP
+
+CHK_DN_KEY:
+    LDA TMP_V2       
+    AND #$10         
+    BNE CHK_LF_KEY   
+    JSR MOV_DOWN
+
+CHK_LF_KEY:
+    LDA #$DF         
+    STA $DC00
+    LDA $DC01        
+    AND #$10         
+    BNE CHK_RT_KEY   
+    JSR MOV_LEFT
+
+CHK_RT_KEY:
+    LDA #$BF         
+    STA $DC00
+    LDA $DC01        
+    AND #$10         
+    BNE CHK_FR_KEY   
+    JSR MOV_RIGHT
+
+CHK_FR_KEY:
+    LDA #$FB         
+    STA $DC00
+    LDA $DC01        
+    AND #$20         
+    BNE SKP_FIRE     
+    
+    LDA LSR_ACT
+    BNE SKP_FIRE     
+    LDA #$01
+    STA LSR_ACT
+    JSR SND_LASER
+    LDA S0_X
+    CLC
+    ADC #$18         
+    STA LSR_X
+    LDA S0_Y
+    STA LSR_Y
+SKP_FIRE:
+    RTS
+
+MOV_UP:
+    LDA S0_Y
+    SEC
+    SBC #$03
+    CMP #MIN_Y
+    BCS SV_UP
+    LDA #MIN_Y
+SV_UP:
+    STA S0_Y
+    RTS
+
+MOV_DOWN:
+    LDA S0_Y
+    CLC
+    ADC #$03
+    CMP #MAX_Y
+    BCC SV_DN
+    LDA #MAX_Y
+SV_DN:
+    STA S0_Y
+    RTS
+
+MOV_LEFT:
+    LDA S0_X
+    SEC
+    SBC #$03
+    CMP #MIN_X
+    BCS SV_LFT
+    LDA #MIN_X
+SV_LFT:
+    STA S0_X
+    RTS
+
+MOV_RIGHT:
+    LDA S0_X
+    CLC
+    ADC #$03
+    CMP #MAX_X
+    BCC SV_RGT
+    LDA #MAX_X
+SV_RGT:
+    STA S0_X
+    RTS
+
+GET_PTR:
+    STA SCR_PTR
+    LDA #$00
+    STA SCR_PTR_H
+    ASL SCR_PTR
+    ROL SCR_PTR_H
+    ASL SCR_PTR
+    ROL SCR_PTR_H
+    ASL SCR_PTR
+    ROL SCR_PTR_H
+    LDA SCR_PTR
+    STA TMP_V2
+    LDA SCR_PTR_H
+    STA TMP_V3
+    ASL SCR_PTR
+    ROL SCR_PTR_H
+    ASL SCR_PTR
+    ROL SCR_PTR_H
+    CLC
+    LDA SCR_PTR
+    ADC TMP_V2
+    STA SCR_PTR
+    LDA SCR_PTR_H
+    ADC TMP_V3
+    STA SCR_PTR_H
+    TXA
+    CLC
+    ADC SCR_PTR
+    STA SCR_PTR
+    LDA SCR_PTR_H
+    ADC #$04
+    STA SCR_PTR_H
+    RTS
+
+SCRL_HORIZ:
+    INC STR_TIM
+    LDX #$00
+STR_LOOP:
+    STX TMP_IDX
+    LDA STR_X,X
+    LDY STR_Y,X
+    TAX
+    TYA
+    JSR GET_PTR
+    LDY #$00
+    LDA #$20         
+    STA (SCR_PTR),Y
+    
+    LDX TMP_IDX
+    CPX #$02
+    BCC DO_DEC
+    JMP SLOW_STR
+DO_DEC:
+    DEC STR_X,X      
+    JMP CHK_STR
+SLOW_STR:
+    LDA STR_TIM
+    AND #$01
+    BNE CHK_STR
+    DEC STR_X,X      
+CHK_STR:
+    LDA STR_X,X
+    CMP #$FF         
+    BNE RDRW_STR
+    LDA #39          
+    STA STR_X,X
+    LDA $D41B        
+    AND #$13
+    CLC
+    ADC #$03         
+    STA STR_Y,X
+RDRW_STR:
+    STX TMP_IDX
+    LDA STR_X,X
+    LDY STR_Y,X
+    TAX
+    TYA
+    JSR GET_PTR
+    LDY #$00
+    LDA TMP_IDX
+    AND #$01
+    BNE USE_DOT
+    LDA #$2A         
+    JMP PLT_STR
+USE_DOT:
+    LDA #$2E         
+PLT_STR:
+    STA (SCR_PTR),Y
+    LDX TMP_IDX
+    INX
+    CPX #$04
+    BNE STR_LOOP
+    RTS
+
+HNDL_INVULN:
+    LDA HIT_TIM
+    BEQ PL_NORM
+    DEC HIT_TIM
+    AND #$04
+    BEQ PL_FLSH
+    LDA #$01         
+    STA S0_COL
+    RTS
+PL_FLSH:
+    LDA #$02         
+    STA S0_COL
+    RTS
+PL_NORM:
+    LDA #$01         
+    STA S0_COL
+    RTS
+
+; -----------------------------------------------------------------------------
+; Sprite Updates
+; -----------------------------------------------------------------------------
+UPD_SPR:
+    JSR HNDL_INVULN 
+    
+    LDA LSR_ACT
+    BEQ HIDE_LSR
+    LDA LSR_X
+    CLC
+    ADC #$06         
+    STA LSR_X
+    CMP #MAX_X
+    BCS HIDE_LSR_RESET
+    JMP SHOW_LSR
+
+HIDE_LSR_RESET:
+    LDA #$00
+    STA LSR_ACT
+HIDE_LSR:
+    LDA #$00
+    STA S1_Y
+    LDA SPR_EXP_Y
+    AND #$FD
+    STA SPR_EXP_Y
+    LDA SPR_EXP_X
+    AND #$FD
+    STA SPR_EXP_X
+    JMP NEXT_LSR
+    
+SHOW_LSR:
+    LDA LSR_Y
+    STA S1_Y
+    LDA LSR_X
+    STA S1_X
+
+    LDA SBEAM_ACT
+    BEQ FORCE_SHRINK
+    LDA SPR_EXP_Y
+    ORA #$02         
+    STA SPR_EXP_Y
+    LDA SPR_EXP_X
+    ORA #$02         
+    STA SPR_EXP_X
+    JMP NEXT_LSR
+FORCE_SHRINK:
+    LDA SPR_EXP_Y
+    AND #$FD         
+    STA SPR_EXP_Y
+    LDA SPR_EXP_X
+    AND #$FD         
+    STA SPR_EXP_X
+
+NEXT_LSR:
+    LDA E_LSR_ACT
+    BEQ HIDE_E_LSR
+    LDA E_LSR_X
+    SEC
+    SBC #$04         
+    STA E_LSR_X
+    CMP #MIN_X
+    BCS SHOW_E_LSR
+    LDA #$00
+    STA E_LSR_ACT
+HIDE_E_LSR:
+    LDA #$00
+    STA S6_Y
+    JMP HNDL_RAT
+SHOW_E_LSR:
+    LDA E_LSR_Y
+    STA S6_Y
+    LDA E_LSR_X
+    STA S6_X
+    LDA #$03         
+    STA S6_COL
+    
+HNDL_RAT:
+    LDA EXP_ACT
+    BEQ NORM_RAT
+    DEC EXP_TIM
+    BNE FLSH_EXP
+    LDA #$00
+    STA EXP_ACT
+    LDA #RAT_BLK
+    STA S2_PTR
+    JSR RESP_RAT
+    JMP HNDL_RAT2
+FLSH_EXP:
+    LDA EXP_TIM
+    AND #$03
+    CLC
+    ADC #$02
+    STA S2_COL
+    JMP HNDL_RAT2
+NORM_RAT:
+    LDA RAT_X
+    SEC
+    SBC #$02         
+    STA RAT_X
+    CMP #MIN_X
+    BCS SHOW_RAT
+    JSR RESP_RAT
+SHOW_RAT:
+    LDA RAT_Y
+    STA S2_Y
+    LDA RAT_X
+    STA S2_X
+    
+    LDA STR_TIM
+    AND #$07         
+    ORA #$01         
+    STA S2_COL
+
+HNDL_RAT2:
+    LDA EXP2_ACT
+    BEQ NORM_RAT2
+    DEC EXP2_TIM
+    BNE FLSH_EXP2
+    LDA #$00
+    STA EXP2_ACT
+    LDA #RAT_BLK
+    STA S3_PTR
+    JSR RESP_RAT2
+    JMP HNDL_PWR
+FLSH_EXP2:
+    LDA EXP2_TIM
+    AND #$03
+    CLC
+    ADC #$02
+    STA S3_COL
+    JMP HNDL_PWR
+NORM_RAT2:
+    LDA RAT2_X
+    SEC
+    SBC #$03         
+    STA RAT2_X
+    CMP #MIN_X
+    BCS SHOW_RAT2
+    JSR RESP_RAT2
+SHOW_RAT2:
+    LDA RAT2_Y
+    STA S3_Y
+    LDA RAT2_X
+    STA S3_X
+    
+    LDA STR_TIM
+    CLC
+    ADC #$04         
+    AND #$07
+    ORA #$01
+    STA S3_COL
+
+HNDL_PWR:
+    LDA PWR_ACT
+    BEQ PWR_ACTIVE
+    DEC PWR_ACT
+    BNE HIDE_PWR
+    JSR RESP_PWR
+    JMP SHOW_PWR
+PWR_ACTIVE:
+    LDA PWR_X
+    SEC
+    SBC #$01
+    STA PWR_X
+    CMP #MIN_X
+    BCS SHOW_PWR
+    LDA $D41B
+    ORA #$40
+    STA PWR_ACT
+HIDE_PWR:
+    LDA #$00
+    STA S4_Y
+    JMP EXT_SPR
+SHOW_PWR:
+    LDA PWR_Y
+    STA S4_Y
+    LDA PWR_X
+    STA S4_X
+
+EXT_SPR:
+    RTS
+
+UPD_SBEAM:
+    LDA SBEAM_ACT
+    BEQ EXT_SBEAM
+    
+    LDA SBEAM_TIM_L
+    BNE DEC_L
+    LDA SBEAM_TIM_H
+    BEQ SBEAM_EXPIRE
+    DEC SBEAM_TIM_H
+DEC_L:
+    DEC SBEAM_TIM_L
+    RTS
+    
+SBEAM_EXPIRE:
+    LDA #$00
+    STA SBEAM_ACT
+    LDA SPR_EXP_Y
+    AND #$FD         
+    STA SPR_EXP_Y
+    LDA SPR_EXP_X
+    AND #$FD         
+    STA SPR_EXP_X
+EXT_SBEAM:
+    RTS
+
+RESP_RAT:
+    LDA #MAX_X
+    STA RAT_X
+    LDA $D41B        
+    AND #$7F
+    CLC
+    ADC #$40         
+    STA RAT_Y
+    RTS
+
+RESP_RAT2:
+    LDA #MAX_X
+    STA RAT2_X
+    LDA $D41B        
+    AND #$7F
+    CLC
+    ADC #$60         
+    STA RAT2_Y
+    RTS
+
+RESP_PWR:
+    LDA #MAX_X
+    STA PWR_X
+    LDA $D41B        
+    AND #$7F
+    CLC
+    ADC #$50         
+    STA PWR_Y
+    
+    LDA $D41B
+    AND #$07         
+    STA PWR_TYP      
+    
+    BEQ ALLOC_HEART  
+    CMP #$01
+    BEQ ALLOC_FISH   
+    CMP #$02
+    BEQ ALLOC_NIP    
+    CMP #$03
+    BEQ ALLOC_YARN
+    CMP #$04
+    BEQ ALLOC_SUPER
+
+    CMP #$05
+    BEQ ALLOC_FISH
+    CMP #$06
+    BEQ ALLOC_NIP
+    JMP ALLOC_YARN
+
+ALLOC_YARN:          
+    LDA #$07         
+    STA S4_COL
+    LDA #PWR_BLK
+    STA S4_PTR
+    RTS
+    
+ALLOC_FISH:
+    LDA #$05         
+    STA S4_COL
+    LDA #PWR_BLK
+    STA S4_PTR
+    RTS
+
+ALLOC_NIP:
+    LDA #$03         
+    STA S4_COL
+    LDA #PWR_BLK
+    STA S4_PTR
+    RTS
+    
+ALLOC_HEART:
+    LDA #$02         
+    STA S4_COL
+    LDA #HRT_BLK    
+    STA S4_PTR
+    RTS
+
+ALLOC_SUPER:
+    LDA #$04         
+    STA S4_COL
+    LDA #SUP_BLK     
+    STA S4_PTR
+    RTS
+
+; -----------------------------------------------------------------------------
+; Collisions & Event Management
+; -----------------------------------------------------------------------------
+CHK_COLL:
+    LDA COLL_REG    
+    STA TMP_COLL
+    JSR CHK_BOSS_COLL
+
+CHK_R1:
+    LDA EXP_ACT
+    BNE CHK_R2
+    LDA TMP_COLL
+    AND #$06        
+    CMP #$06
+    BNE CHK_R2
+    
+    LDA SBEAM_ACT
+    BNE SKP_LSR_DEL1
+    LDA #$00
+    STA LSR_ACT
+    STA S1_Y
+SKP_LSR_DEL1:
+    LDA #$01
+    STA EXP_ACT
+    JSR SND_EXPL
+    LDA #$18
+    STA EXP_TIM
+    LDA #EXP_BLK
+    STA S2_PTR
+    JSR ADD_SCORE
+
+CHK_R2:
+    LDA EXP2_ACT
+    BNE CHK_P1
+    LDA TMP_COLL
+    AND #$0A        
+    CMP #$0A
+    BNE CHK_P1
+    
+    LDA SBEAM_ACT
+    BNE SKP_LSR_DEL2
+    LDA #$00
+    STA LSR_ACT
+    STA S1_Y
+SKP_LSR_DEL2:
+    LDA #$01
+    STA EXP2_ACT
+    JSR SND_EXPL
+    LDA #$18
+    STA EXP2_TIM
+    LDA #EXP_BLK
+    STA S3_PTR
+    JSR ADD_SCORE
+
+CHK_P1:
+    LDA TMP_COLL
+    AND #$11        
+    CMP #$11
+    BNE CHK_E_LSR
+    
+    JSR SND_PWR
+    LDA PWR_TYP
+    BEQ CHK_P1_HEART 
+    CMP #$01
+    BEQ CHK_P1_FISH  
+    CMP #$02
+    BEQ CHK_P1_NIP   
+    CMP #$03
+    BEQ CHK_P1_YARN
+    CMP #$04
+    BEQ CHK_P1_SUPER
+    JMP CLEANUP_PWR
+
+CHK_P1_YARN:         
+    JSR ADD_1000     
+    JMP CLEANUP_PWR
+
+CHK_P1_FISH:
+    JSR ADD_200      
+    JMP CLEANUP_PWR
+
+CHK_P1_NIP:
+    JSR ADD_500      
+    JMP CLEANUP_PWR
+
+CHK_P1_HEART:
+    LDA LIVES
+    CMP #$09        
+    BEQ CLEANUP_PWR
+    INC LIVES        
+
+CHK_P1_SUPER:
+    LDA #$01
+    STA SBEAM_ACT        
+    LDA #$08         
+    STA SBEAM_TIM_L      
+    LDA #$07
+    STA SBEAM_TIM_H      
+    JSR ADD_500
+    JMP CLEANUP_PWR
+
+CLEANUP_PWR:
+    LDA #$40
+    STA PWR_ACT      
+    LDA #$00
+    STA S4_Y
+    JSR DRW_SCR      
+
+CHK_E_LSR:
+    LDA TMP_COLL
+    AND #$41       
+    CMP #$41
+    BEQ PL_HIT
+
+PL_COLL_CHK:
+    LDA HIT_TIM
+    BNE EXT_COLL         
+    
+    LDA TMP_COLL
+    AND #$05
+    CMP #$05
+    BEQ PL_HIT
+    
+    LDA TMP_COLL
+    AND #$09
+    CMP #$09
+    BEQ PL_HIT
+
+    LDA BOSS_ACT
+    CMP #$01
+    BNE EXT_COLL         
+    LDA TMP_COLL
+    AND #$21
+    CMP #$21
+    BNE EXT_COLL
+
+PL_HIT:
+    JSR PROCESS_DAMAGE
+
+EXT_COLL:
+    RTS
+
+CHK_BOSS_COLL:
+    LDA BOSS_ACT
+    CMP #$01
+    BNE NO_B_HIT
+    LDA TMP_COLL
+    AND #$22       
+    CMP #$22
+    BNE NO_B_HIT
+    
+    LDA #$00
+    STA LSR_ACT    
+    STA S1_Y
+    
+    DEC BOSS_HP
+    BEQ BOSS_DEAD
+    JSR SND_EXPL
+    RTS
+BOSS_DEAD:
+    JMP KILL_BOSS
+NO_B_HIT:
+    RTS
+
+PROCESS_DAMAGE:
+    DEC LIVES
+    BEQ PL_DEAD
+    LDA #$40             
+    STA HIT_TIM
+    JSR SND_EXPL        
+    JSR DRW_SCR        
+    RTS
+
+PL_DEAD:
+    JMP DO_GAME_OVER
+
+KILL_BOSS:
+    LDA #$03        
+    STA BOSS_ACT
+    LDA #$20        
+    STA BOSS_EXP_TIM
+    LDA #EXP_BLK    
+    STA S5_PTR
+    JSR SND_EXPL
+    JSR ADD_1000
+    
+    INC LEVEL
+    LDA LEVEL
+    CMP #$09        
+    BNE NO_WIN
+    JMP VICTORY_SCREEN
+NO_WIN:
+    JSR DRW_SCR      
+    RTS
+
+; -----------------------------------------------------------------------------
+; Game States Screens
+; -----------------------------------------------------------------------------
+VICTORY_SCREEN:
+    JSR CLR_SCR
+    LDA #$00
+    STA SPR_EN       
+    STA E_LSR_ACT    
+
+    LDX #$00
+VIC_L1:
+    LDA TXT_VIC1,X
+    BEQ VIC_P2
+    STA $051A,X      
+    INX
+    JMP VIC_L1
+VIC_P2:
+    LDX #$00
+VIC_L2:
+    LDA TXT_VIC2,X
+    BEQ VIC_P3
+    STA $056F,X      
+    INX
+    JMP VIC_L2
+VIC_P3:
+    LDX #$00
+VIC_L3:
+    LDA TXT_VIC3,X
+    BEQ VIC_P4
+    STA $05E4,X      
+    INX
+    JMP VIC_L3
+VIC_P4:
+    LDX #$00
+VIC_L4:
+    LDA TXT_VIC4,X
+    BEQ VIC_P5
+    STA $0638,X      
+    INX
+    JMP VIC_L4
+VIC_P5:
+    LDX #$00
+VIC_L5:
+    LDA TXT_VIC5,X
+    BEQ VIC_WAIT
+    STA $068C,X      
+    INX
+    JMP VIC_L5
+
+VIC_WAIT:
+    LDA #$FB         
+    STA $DC00
+    LDA $DC01
+    AND #$20
+    BNE VIC_WAIT
+VIC_WAIT_REL:
+    LDA #$FB
+    STA $DC00
+    LDA $DC01
+    AND #$20
+    BEQ VIC_WAIT_REL
+    JMP INIT
+
+TXT_VIC1:
+    .BYTE $19,$0F,$15,$20,$08,$01,$16,$05,$20,$03,$0F,$0D,$10,$0C,$05,$14,$05,$04,$00
+TXT_VIC2:
+    .BYTE $14,$08,$05,$20,$07,$01,$0D,$05,$21,$00
+TXT_VIC3:
+    .BYTE $10,$12,$05,$13,$13,$20,$06,$20,$14,$0F,$20,$10,$0C,$01,$19,$00
+TXT_VIC4:
+    .BYTE $01,$07,$01,$09,$0E,$21,$00
+TXT_VIC5:
+    .BYTE $00 
+
+DO_GAME_OVER:
+    JSR CLR_SCR
+    LDA #$00
+    STA SPR_EN       
+
+    LDX #$00
+GO_L1:
+    LDA TXT_GO1,X
+    BEQ GO_P2
+    STA $054E,X      
+    INX
+    JMP GO_L1
+GO_P2:
+    LDX #$00
+GO_L2:
+    LDA TXT_GO2,X
+    BEQ GO_P3
+    STA $0599,X      
+    INX
+    JMP GO_L2
+GO_P3:
+    LDX #$00
+GO_L3:
+    LDA TXT_GO3,X
+    BEQ GO_WAIT
+    STA $05EA,X      
+    INX
+    JMP GO_L3
+
+GO_WAIT:
+    LDA #$FB         
+    STA $DC00
+    LDA $DC01
+    AND #$20         
+    BNE GO_WAIT
+GO_WAIT_REL:
+    LDA #$FB
+    STA $DC00
+    LDA $DC01
+    AND #$20
+    BEQ GO_WAIT_REL  
+    JMP INIT
+
+TXT_GO1:
+    .BYTE $0D,$05,$05,$05,$05,$05,$0F,$0F,$0F,$0F,$17,$17,$00 
+TXT_GO2:
+    .BYTE $01,$0C,$0C,$20,$39,$20,$0C,$09,$16,$05,$13,$20,$08,$01,$16,$05,$20,$07,$0F,$0E,$05,$00 
+TXT_GO3:
+    .BYTE $07,$01,$0D,$05,$20,$0F,$16,$05,$12,$20,$13,$10,$01,$03,$05,$20,$06,$09,$12,$05,$21,$00 
+
+
+; -----------------------------------------------------------------------------
+; Interface UI Generation
+; -----------------------------------------------------------------------------
+SETUP_UI:
+    LDA #$0C 
+    STA $0400
+    LDA #$09 
+    STA $0401
+    LDA #$16 
+    STA $0402
+    LDA #$05 
+    STA $0403
+    LDA #$13 
+    STA $0404
+    LDA #$3A 
+    STA $0405
+    LDA #$20 
+    STA $0406
+    
+    LDA #$09         
+    STA LIVES
+    LDA #$00
+    STA HIT_TIM
+    STA SBEAM_ACT    
+    STA SBEAM_TIM_L  
+    STA SBEAM_TIM_H  
+    STA SPR_EXP_Y    
+    STA SPR_EXP_X
+
+    LDA #$13  ; 'S'
+    STA $0409
+    LDA #$03  ; 'C'
+    STA $040A
+    LDA #$0F  ; 'O'
+    STA $040B
+    LDA #$12  ; 'R'
+    STA $040C
+    LDA #$05  ; 'E'
+    STA $040D
+    LDA #$3A  ; ':'
+    STA $040E
+    
+    LDA #$10 
+    STA $0416
+    LDA #$0C 
+    STA $0417
+    LDA #$01 
+    STA $0418
+    LDA #$0E 
+    STA $0419
+    LDA #$05 
+    STA $041A
+    LDA #$14 
+    STA $041B
+    LDA #$20 
+    STA $041C
+    LDA #$20 
+    STA $041D
+    LDA #$3A 
+    STA $041E
+
+    LDX #$07
+    LDA #$01
+COL_LIVES:
+    STA $D800,X
+    DEX
+    BPL COL_LIVES
+
+    LDX #$0B
+    LDA #$07
+COL_SCORE:
+    STA $D809,X
+    DEX
+    BPL COL_SCORE
+
+    LDX #$10
+    LDA #$03
+COL_SYS:
+    STA $D816,X
+    DEX
+    BPL COL_SYS
+
+    LDA #$01
+    STA LEVEL        
+
+    LDA #$00
+    STA SCR_0
+    STA SCR_1
+    STA SCR_2
+    STA LSR_ACT
+    STA STR_TIM
+    STA EXP_ACT
+    STA EXP2_ACT
+    LDA #$80
+    STA PWR_ACT      
+    
+    LDA #10
+    STA STR_X
+    LDA #$05
+    STA STR_Y
+    LDA #22
+    STA STR_X+1
+    LDA #$0B
+    STA STR_Y+1
+    LDA #31
+    STA STR_X+2
+    LDA #$11
+    STA STR_Y+2
+    LDA #38
+    STA STR_X+3
+    LDA #$16
+    STA STR_Y+3
+    
+    JSR RESP_RAT
+    JSR RESP_RAT2
+    
+    LDA #$50        
+    STA BOSS_THRES
+    
+    JSR DRW_SCR
+    RTS
+
+
+
+
+
+DRW_SCR:
+    LDA SCR_2
+    LSR
+    LSR
+    LSR
+    LSR
+    CLC
+    ADC #$30
+    STA $040F
+    LDA SCR_2
+    AND #$0F
+    CLC
+    ADC #$30
+    STA $0410
+    LDA SCR_1
+    LSR
+    LSR
+    LSR
+    LSR
+    CLC
+    ADC #$30
+    STA $0411
+    LDA SCR_1
+    AND #$0F
+    CLC
+    ADC #$30
+    STA $0412
+    LDA SCR_0
+    LSR
+    LSR
+    LSR
+    LSR
+    CLC
+    ADC #$30
+    STA $0413
+    LDA SCR_0
+    AND #$0F
+    CLC
+    ADC #$30
+    STA $0414
+    
+    LDA LIVES
+    CLC
+    ADC #$30
+    STA $0407
+
+    LDA LEVEL
+    SEC
+    SBC #$01         
+    AND #$07         
+    ASL
+    ASL
+    ASL              
+    TAX              
+    
+    LDY #$00         
+NAM_LOOP:
+    LDA SYS_NAMES,X
+    STA $041F,Y      
+    INX
+    INY
+    CPY #$08
+    BNE NAM_LOOP
+    RTS
+
+SYS_NAMES:
+    .BYTE $0D, $05, $0F, $17, $14, $05, $12, $20 
+    .BYTE $10, $15, $12, $12, $13, $09, $15, $13 
+    .BYTE $06, $05, $0C, $09, $04, $09, $01, $20 
+    .BYTE $03, $01, $14, $14, $0F, $10, $09, $01 
+    .BYTE $0E, $09, $10, $14, $12, $0F, $0E, $20 
+    .BYTE $0C, $09, $14, $14, $05, $12, $09, $18 
+    .BYTE $17, $08, $09, $13, $0B, $05, $12, $1A 
+    .BYTE $03, $0C, $01, $17, $0E, $19, $18, $20 
+
+ADD_SCORE:
+    SED                  
+    CLC
+    LDA SCR_0
+    ADC #$10        
+    STA SCR_0
+    BCC ADD_DONE
+    LDA SCR_1        
+    ADC #$00
+    STA SCR_1
+    BCC ADD_DONE
+    LDA SCR_2        
+    ADC #$00
+    STA SCR_2
+    BNE ADD_DONE    
+
+ADD_200:
+    SED
+    CLC
+    LDA SCR_1
+    ADC #$02        
+    STA SCR_1
+    BCC ADD_DONE
+    LDA SCR_2
+    ADC #$00
+    STA SCR_2
+    JMP ADD_DONE
+
+ADD_500:
+    SED
+    CLC
+    LDA SCR_1
+    ADC #$05        
+    STA SCR_1
+    BCC ADD_DONE
+    LDA SCR_2
+    ADC #$00
+    STA SCR_2
+    JMP ADD_DONE
+
+ADD_1000:
+    SED
+    CLC
+    LDA SCR_1
+    ADC #$10        
+    STA SCR_1
+    BCC ADD_DONE
+    LDA SCR_2
+    ADC #$00
+    STA SCR_2
+
+ADD_DONE:
+    CLD                  
+    JSR DRW_SCR     
+    RTS
+
+CLR_SCR:
+    LDX #$00
+CLR_LP:
+    LDA #$20
+    STA $0400,X
+    STA $0500,X
+    STA $0600,X
+    STA $0700,X
+    LDA #$01
+    STA $D800,X
+    STA $D900,X
+    STA $DA00,X
+    STA $DB00,X
+    INX
+    BNE CLR_LP
+    RTS
+
+; -----------------------------------------------------------------------------
+; SID Sound Drivers
+; -----------------------------------------------------------------------------
+INIT_SID:
+    LDA #$00
+    STA $D418
+    STA $D404
+    LDA #$09         
+    STA $D405
+    LDA #$00         
+    STA $D406
+    LDA #$0F         
+    STA $D418
+    
+    LDA #$FF
+    STA $D40E        
+    STA $D40F        
+    LDA #$80         
+    STA $D412
+    RTS
+
+SND_LASER:
+    PHA
+    LDA #$00
+    STA $D404
+    LDA #$10
+    STA $D400
+    LDA #$40
+    STA $D401
+    LDA #$21
+    STA $D404
+    PLA
+    RTS
+
+SND_EXPL:
+    PHA
+    LDA #$00
+    STA $D404
+    LDA #$00
+    STA $D400
+    LDA #$00
+    STA $D401
+    LDA #$81
+    STA $D404
+    PLA
+    RTS
+
+SND_PWR:
+    PHA
+    LDA #$00
+    STA $D404
+    LDA #$80         
+    STA $D400
+    LDA #$30
+    STA $D401
+    LDA #$11         
+    STA $D404
+    PLA
+    RTS
+
+; -----------------------------------------------------------------------------
+; Sprite Binary Matrix Definitions
+; -----------------------------------------------------------------------------
+* = $2000
+
+CAT_SPR:
+    .BYTE $00,$1C,$00, $00,$3E,$00, $00,$7F,$00, $04,$FF,$00
+    .BYTE $0C,$BF,$80, $1D,$81,$C0, $3F,$00,$E0, $7E,$3C,$F0
+    .BYTE $7C,$7E,$F8, $FC,$FF,$FC, $7C,$7E,$F8, $7E,$3C,$F0
+    .BYTE $3F,$00,$E0, $1D,$81,$C0, $0C,$BF,$80, $04,$FF,$00
+    .BYTE $00,$7F,$00, $00,$3E,$00, $00,$1C,$00, $00,$08,$00
+    .BYTE $00,$00,$00, $00
+
+LSR_SPR:
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $FF,$FF,$FC, $FF,$FF,$FC
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $FF,$FF,$FC, $FF,$FF,$FC, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00
+
+* = $2080
+RAT_SPR:
+    .BYTE $00,$00,$3F, $00,$00,$7F, $00,$00,$FF, $00,$01,$FE
+    .BYTE $00,$03,$FC, $00,$0F,$F8, $00,$3F,$F0, $00,$7F,$E0
+    .BYTE $01,$FF,$C0, $0F,$FF,$80, $3F,$FF,$00, $0F,$FF,$80
+    .BYTE $01,$FF,$C0, $00,$7F,$E0, $00,$3F,$F0, $00,$0F,$F8
+    .BYTE $00,$03,$FC, $00,$01,$FE, $00,$00,$FF, $00,$00,$7F
+    .BYTE $00,$00,$3F, $00
+
+* = $20C0
+EXP_SPR:
+    .BYTE $00,$00,$00, $00,$42,$00, $10,$24,$08, $08,$18,$10
+    .BYTE $00,$3C,$00, $42,$7E,$42, $3C,$E7,$3C, $00,$3C,$00
+    .BYTE $42,$7E,$42, $10,$18,$08, $08,$24,$10, $00,$42,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00
+
+* = $2100
+PWR_SPR:
+    .BYTE $00,$00,$00, $00,$18,$00, $00,$3C,$00, $00,$66,$00
+    .BYTE $00,$C3,$00, $01,$81,$80, $03,$00,$C0, $01,$81,$80
+    .BYTE $00,$C3,$00, $00,$66,$00, $00,$3C,$00, $00,$18,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00
+
+* = $2140
+BOSS_SPR:
+    .BYTE $03,$C0,$C0, $0F,$F3,$F0, $1F,$FF,$F8, $3F,$FF,$FC
+    .BYTE $3F,$DB,$FC, $7F,$FF,$FE, $7F,$E7,$FE, $7F,$E7,$FE
+    .BYTE $FF,$FF,$FF, $FF,$E7,$FF, $FF,$DB,$FF, $FF,$BD,$FF
+    .BYTE $FF,$FF,$FF, $7F,$FF,$FE, $3F,$FF,$FC, $1F,$7E,$F8
+    .BYTE $0E,$3C,$70, $04,$18,$20, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00
+
+* = $2180
+HRT_SPR:
+    .BYTE $00,$00,$00, $3C,$00,$3C, $7E,$00,$7E, $FF,$FF,$FF
+    .BYTE $FF,$FF,$FF, $FF,$FF,$FF, $7F,$FF,$FE, $3F,$FF,$FC
+    .BYTE $1F,$FF,$F8, $0F,$FF,$F0, $07,$FF,$E0, $03,$FF,$C0
+    .BYTE $01,$FF,$80, $00,$7E,$00, $00,$3C,$00, $00,$18,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00
+
+* = $21C0
+E_LSR_SPR:
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $FC,$FF,$3F, $FC,$FF,$3F, $FC,$FF,$3F, $FC,$FF,$3F
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00,$00,$00, $00,$00,$00, $00,$00,$00
+    .BYTE $00,$00,$00, $00
+
+* = $2200
+SUP_SPR:
+    .BYTE $00,$7E,$00, $00,$FF,$00, $01,$DB,$80, $03,$99,$C0
+    .BYTE $07,$99,$E0, $0F,$99,$F0, $1F,$99,$F8, $3F,$FF,$FC
+    .BYTE $3F,$FF,$FC, $1F,$FF,$F8, $0F,$DB,$F0, $07,$C3,$E0
+    .BYTE $03,$C3,$C0, $01,$C3,$80, $00,$C3,$00, $00,$C3,$00
+    .BYTE $00,$7E,$00, $00,$3C,$00, $00,$3C,$00, $00,$18,$00
+    .BYTE $00,$00,$00, $00
+
+.END
